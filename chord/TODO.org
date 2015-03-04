@@ -1,0 +1,7 @@
+#+STARTUP: hidestars odd
+#+STARTUP: showeverything
+#+TODO: TODO IN-PROGRESS WAITING DONE
+
+* DONE learn how to reload code on a gen_server.
+  CLOSED: [2015-03-03 Tue 23:31]
+* TODO Use https://code.google.com/p/nodefinder/ for node auto-discovery.
