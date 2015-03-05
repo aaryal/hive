@@ -3,37 +3,24 @@
 -include_lib("defines.hrl").
 -compile(export_all).
 
--record(server_state, {
-          id,
-          pid,
-          fingers = [],
-          tref,
-          comm
-         }).
-
--record(finger, {
-          id,
-          node,
-          pid
-         }).
-
-%% Macros
--define(SERVER, ?MODULE).
 
 %%--------------------------------------------------------------------
 %% API
 %%--------------------------------------------------------------------
 successor(Id) ->
-    gen_server:call(?SERVER, {successor, Id}).
+    gen_server:call(?SERVER, {find_successor, Id}).
 
 join([RemotePid | _T]) ->
     join(RemotePid);
 join([]) ->
     ok;
-join(RemotePid) ->
+join(RemotePid) when is_pid(RemotePid) ->
     Finger = gen_server:call(RemotePid, {get_finger}),
     io:format(user, "remote finger: ~p~n", [Finger]),
-    ok.
+    ok;
+join(#finger{} = RemoteFinger) ->
+    gen_server:call(?SERVER, {join, RemoteFinger}).
+
 
 %%====================================================================
 %% API (admin interface)
@@ -47,7 +34,7 @@ start() ->                                      % This is only for development
 stop() ->
     gen_server:call(?SERVER, terminate).
 
-status_dump() ->
+status() ->
     gen_server:call(?SERVER, {status}).
 
 reload() ->                                     % This is only for development
@@ -69,8 +56,9 @@ start(Config) ->
 
 discover_and_join() ->
     {Pids, _BadNodes} = rpc:multicall(nodes(), erlang, whereis, [?SERVER]),
-    io:format(user, "other Pids.. ~p~n", [Pids]),
-    join(Pids).
+    ChordPids = [X || X <- Pids, X =/= undefined],
+    io:format(user, "other Pids.. ~p~n", [ChordPids]),
+    join(ChordPids).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% OTP
@@ -85,14 +73,15 @@ discover_and_join() ->
 init([_Config]) ->
     %TODO: this is how you can configure what module recieves the messages 'send' etc..
     %[Comm] = config:fetch_or_default_config([comm], Config, ?DEFAULT_CONFIG),
-    Comm = chord,
     ShaInt = create_id(),
+    SelfFinger = #finger{id = ShaInt, node = node(), pid = self()},
     {ok, TRef} = timer:send_interval(timer:minutes(60), run_stabilization_tasks), % stub
     {ok, #server_state{
-            id=ShaInt,
-            pid=self(),
-            tref=TRef,
-            comm=Comm}}.
+            id = ShaInt,
+            self = SelfFinger,
+            fingers = [SelfFinger],
+            pid = self(),
+            tref = TRef}}.
 
 
 %%--------------------------------------------------------------------
@@ -108,8 +97,10 @@ handle_call(terminate, _From, State) ->
     {stop, normal, ok, State};
 handle_call({status}, _From, State) ->
     {reply, State, State};
-handle_call({successor, Id}, _From, State) ->
+handle_call({find_successor, Id}, _From, State) ->
     {{ok, Finger}, _} = find_successor(Id, State),
+    {reply, Finger, State};
+handle_call({get_finger}, _From, #server_state{self = Finger} = State) ->
     {reply, Finger, State};
 
 %% TODO: remove this clause after i'm done with dev. don't want a catch-all clause... let it fail.
@@ -143,15 +134,6 @@ handle_info(_Info, State) ->
 
 
 
-get_successor(#server_state{fingers = [H | _T]}) ->
-    H;
-get_successor(#server_state{fingers = []} = State) ->
-    make_finger_from_self(State).
-
-make_finger_from_self(#server_state{id = Id}) ->
-    #finger{id = Id, node = node(), pid = self()}.
-
-
 %% Half-open interval (n, s]
 id_between_oc(Start, Start, _QueryId) -> % when Start == End -> % degenerate interval
     true;
@@ -160,6 +142,7 @@ id_between_oc(Start, End, QueryId) when Start < End  ->  % interval does not wra
 id_between_oc(Start, End, QueryId)                   ->  % interval wrap
     Start < QueryId orelse  End >= QueryId.
 
+%% Closed interval (n, s)
 id_between_oo(Start, Start, QueryId) -> % when Start == End -> % degenerate interval
     Start =/= QueryId;
 id_between_oo(Start, End, QueryId) when Start < End -> % interval does not wrap
@@ -168,36 +151,49 @@ id_between_oo(Start, End, QueryId) ->           % interval wraps
     Start < QueryId orelse End > QueryId.
 
 
-find_successor(Id, #server_state{id = MyId, comm = Comm} = State) ->
-    SuccessorFinger = get_successor(State),
-    SuccessorId = SuccessorFinger#finger.id,
-    case id_between_oc(MyId, SuccessorId, Id) of
+get_successor(#server_state{successor = Successor}) ->
+    Successor;
+get_successor(#finger{pid = Pid}) ->
+    gen_server:call(Pid, {get_successor}).
+
+find_successor(#server_state{} = State, Id) ->
+    Nprime = find_predecessor(State, Id),
+    get_successor(Nprime).
+
+find_predecessor(#finger{id = MyId} = N, Id) ->
+    Successor = get_successor(N),
+    case id_between_oc(MyId, Successor#finger.id, Id) of
         true ->
-            {{ok, SuccessorFinger}, State};
+            N;
         _ ->
-            {{ok, Finger}, State} = find_closest_preceding_node(Id, State),
-            case Finger#finger.id =:= State#server_state.id of
-                true ->
-                    {{ok, Finger}, State};
-                false ->
-                    {Comm:send(Finger, {find_successor, Id}), State}
-            end
+            %% closest_preceding_finger needs to be done on the remote node
+            PreceedingFinger = closest_preceding_finger(N, Id),
+            find_predecessor(PreceedingFinger, Id)
     end.
 
+closest_preceding_finger(#finger{pid = Pid} = _Finger, Id) ->
+    gen_server:call(Pid, {closest_preceding_finger, Id});
+closest_preceding_finger(#server_state{fingers = Fingers} = State, Id) ->
+    RFingers = list:reverse(Fingers),           % TODO is there a better way to do this instead
+                                                % of reversing the list every time?
+    closest_preceding_finger(State, Id, RFingers).
 
-find_closest_preceding_node(Id, State) ->
-    FingersR = lists:reverse(State#server_state.fingers), % fingers are stored in ascending order
-    find_closest_preceding_node(Id, State, FingersR).
-
-find_closest_preceding_node(Id, State, [Finger|T]) ->
-    case ch_id_utils:id_between_oo(State#server_state.id, Id, Finger#finger.id) of % one book says _oc
-        true  ->
-           {{ok, Finger}, State};
-        false ->
-           find_closest_preceding_node(Id, State, T)
+closest_preceding_finger(#server_state{id = MyId} = State, Id, [#finger{id = FingerId} = H | T]) ->
+    case id_between_oo(MyId, FingerId, Id) of
+        true ->
+            H;
+        _ ->
+            closest_preceding_finger(State, Id, T)
     end;
-find_closest_preceding_node(_Id, State, []) ->
-    {{ok, make_finger_from_self(State)}, State}.
+closest_preceding_finger(#server_state{self = Self} = _State, _Id, []) ->
+    Self.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Utility stuff
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 
 
 registered_name() ->

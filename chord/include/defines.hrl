@@ -19,3 +19,21 @@
 -define (DEFAULT_CONFIG,  [
                             {comm, chord}
                           ]).
+
+-record(server_state, {
+          id,
+          pid,
+          self,
+          successor,
+          fingers = [],
+          tref
+         }).
+
+-record(finger, {
+          id,
+          node,
+          pid
+         }).
+
+%% Macros
+-define(SERVER, ?MODULE).

@@ -4,4 +4,14 @@
 
 * DONE learn how to reload code on a gen_server.
   CLOSED: [2015-03-03 Tue 23:31]
+
 * TODO Use https://code.google.com/p/nodefinder/ for node auto-discovery.
+
+* TODO the network system detects nodes that are disconnected.
+  see if there's any way to hook into that for joining/leaving a cluster of nodes.
+  error message:
+  =ERROR REPORT==== 4-Mar-2015::08:28:45 ===
+  + Node n1@anooparyal not responding ++
+  + Removing (timedout) connection ++
+
+    had to replace asterisk with a plus.
