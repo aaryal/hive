@@ -15,3 +15,11 @@
   + Removing (timedout) connection ++
 
     had to replace asterisk with a plus.
+
+To run a node do this:
+erl -sname n2@localhost -setcookie c -boot start_sasl
+
+then, run
+net_adm:ping(n1@localhost).
+chord:start().
+chord:join().
