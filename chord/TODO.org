@@ -22,4 +22,6 @@ erl -sname n2@localhost -setcookie c -boot start_sasl
 then, run
 net_adm:ping(n1@localhost).
 chord:start().
+chord:status().
 chord:join().
+chord:status().
