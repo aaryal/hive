@@ -4,7 +4,7 @@ OBJDIR=ebin
 DEPDIR=.deps
 ERLC=erlc
 ERLYDTL=./bin/erlydtl_compile
-ERLCFLAGS=-I include
+ERLCFLAGS=-I include #+debug_info
 
 SOURCES=$(wildcard $(SRCDIR)/*.erl)
 OBJECTS=$(addprefix $(OBJDIR)/, $(notdir $(SOURCES:.erl=.beam)))

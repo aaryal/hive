@@ -11,7 +11,7 @@
 -define (NBITMOD, round(math:pow(2, ?NBIT))).
 
 -ifdef (DEBUG).
--define (NBIT, 7). % number of bits in the hash function
+-define (NBIT, 3). % number of bits in the hash function
 -else.
 -define (NBIT, 160). % number of bits in the hash function
 -endif.
@@ -19,20 +19,21 @@
 -define (DEFAULT_CONFIG,  [
                             {comm, chord}
                           ]).
+-record(node, {
+          id,                                   % int
+          pid                                   % pid
+         }).
 
 -record(server_state, {
-          id,
-          pid,
-          self,
-          successor,
-          fingers = [],
+          self,                                 % #node{}
+          predecessor,                          % node{}
+          fingers = [],                         % [node{} | ...]
           tref
          }).
 
 -record(finger, {
-          id,
-          node,
-          pid
+          start,                                % int
+          node                                  % #node{}
          }).
 
 %% Macros
