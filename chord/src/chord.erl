@@ -56,7 +56,7 @@ start(Config) ->
 init([_Config]) ->
     ShaInt = create_id(),
     SelfNode = #node{id = ShaInt, pid = self()},
-    {ok, TRef} = timer:send_interval(timer:minutes(60), run_stabilization_tasks), % stub
+    {ok, TRef} = timer:send_interval(timer:seconds(5), run_stabilization_tasks),
     {ok, #server_state{
             self = SelfNode,
             predecessor = SelfNode,
@@ -107,8 +107,8 @@ handle_call(get_predecessor, _From, State) ->
 handle_cast({set_predecessor, #node{} = Predecessor}, State) ->
     State1 = set_predecessor(State, Predecessor),
     {noreply, State1};
-handle_cast({update_finger_table, Node, S, I}, State) ->
-    State1 = update_finger_table(State, Node, S, I),
+handle_cast({notify, Nprime}, State) ->
+    State1 = notify(State, Nprime),
     {noreply, State1};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -121,9 +121,9 @@ terminate(_Reason, _State) ->
     ok.
 
 handle_info(run_stabilization_tasks, State) ->
-    %% TODO: do stabilization here... this is invoked by timers started in init.
-    io:format(user, "Stabalizing ~p~n", [State]),
-    {noreply, State};
+    State1 = stabilize(State),
+    State2 = fix_fingers(State1),
+    {noreply, State2};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -179,93 +179,54 @@ closest_preceding_finger(State, _Id, []) ->
     State#server_state.self.
 
 
+
+
 join(State, [Pid | _T]) when is_pid(Pid) ->
     Nprime = get_self(State, Pid),
     join(State, Nprime);
-join(#server_state{self = N, fingers = Fingers} = State, []) -> % This is the only node on the network
-    NewFingers = [X#finger{node = N} || X <- Fingers],
-    State1 = State#server_state{fingers = NewFingers, predecessor = N},
+join(#server_state{} = State, []) -> % This is the only node on the network
+    State1 = State#server_state{predecessor = nil},
     State1;
-join(State, Nprime) ->                             % Nprime is another node that already exists
-    State1 = init_finger_table(State, Nprime),
-    %error_logger:info_msg("before updating others: ~n~p~n", [State1]),
-    State2 = update_others(State1),
-    %error_logger:info_msg("after updating others: ~n~p~n", [State2]),
-    %% TODO: move keys in (predecessor, n] from successor
+join(#server_state{} = State, Nprime) ->
+    State1 = State#server_state{predecessor = nil},
+    State2 = set_successor(State1, find_successor(State1, Nprime, id_of(State1))),
     State2.
 
-init_finger_table(#server_state{fingers = [Finger1 | Rest]} = State, Nprime) ->
-    Successor = find_successor(State, Nprime, Finger1#finger.start),
-
-    Fingers1 = [Finger1#finger{node = Successor} | Rest],
-
-    State1 = State#server_state{fingers = Fingers1},
-    Predecessor = get_predecessor(State1, Successor),
-    State2 = set_predecessor(State1, Predecessor),
-    set_predecessor(Successor, State2),
-
-    [FirstFinger | OtherFingers] = Fingers1,
-    Fingers2 = init_finger_table_helper(State2, Nprime, FirstFinger, OtherFingers, [FirstFinger]),
-    State3 = State2#server_state{fingers = Fingers2},
-    State3.
-
-init_finger_table_helper(_State, _Nprime, _IFinger, [], Accl) ->
-    lists:reverse(Accl);
-init_finger_table_helper(State, Nprime, IFinger, [IplusOneFinger | OtherFingers], Accl) ->
-    case between_co(IplusOneFinger#finger.start, {id_of(State), id_of(IFinger)}) of
+stabilize(State) ->
+    Successor = get_successor(State),
+    X = get_predecessor(State, Successor),
+    case X =/= nil andalso between_oo(id_of(X), {id_of(State), id_of(Successor)}) of
         true ->
-            IplusOneFinger1 = IplusOneFinger#finger{node = IFinger#finger.node},
-            init_finger_table_helper(State, Nprime, IplusOneFinger1, OtherFingers, [IplusOneFinger1 | Accl]);
-        _ ->
-            Successor = find_successor(State, Nprime, IplusOneFinger#finger.start),
-            IplusOneFinger1 = IplusOneFinger#finger{node = Successor},
-            init_finger_table_helper(State, Nprime, IplusOneFinger1, OtherFingers, [IplusOneFinger1 | Accl])
-    end.
-
-
-update_others(State) ->
-    State1 = update_others(State, 1),
-    State1.
-
-update_others(State, ?NBIT+1) ->
-    State;
-update_others(#server_state{self = #node{id = Nid}} = State, I) ->
-    T = round(Nid - math:pow(2, I-1)),
-    P = find_predecessor(State, T),
-    %error_logger:info_msg("updating others finger table: ~nState: ~p~nI: ~p~nT: ~p~nP: ~p~n", [State, I, T, P]),
-
-    State1 = update_finger_table(State, P, State#server_state.self, I),
-    update_others(State1, I+1).
-
-update_finger_table(State, Node, Node, _I) ->
-    %% don't need to tell the node to make itself what's pointed at
-    %% since that's how it would have started out anyway.
-    State;
-update_finger_table(#server_state{self = #node{ pid = Pid}} = State, #node{pid = Pid}, S, I) ->
-    %error_logger:info_msg("I'm told to update my finger table: ~nState: ~p~nS: ~p~nI: ~p~n", [State, S, I]),
-    State1 = update_finger_table_helper(State, S, I),
-    %error_logger:info_msg("after updating finger table: ~nState: ~p~n~n ******************** ~n", [State1]),
-    State1;
-update_finger_table(State, #node{pid = Pid} = Node, S, I) ->
-    %error_logger:info_msg("telling other to update their finger table: ~nState: ~p~nNode: ~p~nS: ~p~nI: ~p~n", [State, Node, S, I]),
-    gen_server:cast(Pid, {update_finger_table, Node, S, I}),
-    State.
-
-update_finger_table_helper(#server_state{fingers = Fingers} = State, #node{} = S, I) ->
-    IthFinger = lists:nth(I, Fingers),
-    case between_co(id_of(S), {id_of(State), id_of(IthFinger)}) of
-        true ->
-            %error_logger:info_msg("**** ~p E [~p, ~p) is TRUE~n", [id_of(S), id_of(State), id_of(IthFinger)]),
-            NewIthFinger = IthFinger#finger{node = S},
-            Fingers1 = lists:sublist(Fingers, I-1) ++ [NewIthFinger] ++ lists:nthtail(I, Fingers),
-            State1 = State#server_state{fingers = Fingers1},
-            P = get_predecessor(State1),
-            State2 = update_finger_table(State1, P, S, I),
+            State1 = set_successor(State, X),
+            State2 = notify(X, State1),                  % X is now the successor
             State2;
         _ ->
-            %error_logger:info_msg("**** ~p E [~p, ~p) is FALSE. No Change~n", [id_of(S), id_of(State), id_of(IthFinger)]),
+            State1 = notify(Successor, State),
+            State1
+    end.
+
+notify(#node{pid = Pid} = N, #server_state{self = #node{pid = Pid}} = State) ->
+    State;
+notify(#node{pid = Pid} = N, #server_state{self = Node} = State) ->
+    gen_server:cast(Pid, {notify, Node}),
+    State;
+notify(#server_state{predecessor = Predecessor} = State, Nprime) ->
+    case Predecessor =:= nil orelse between_oo(id_of(Nprime), {id_of(Predecessor), id_of(State)}) of
+        true ->
+            State1 = State#server_state{predecessor = Nprime},
+            State1;
+        _ ->
             State
     end.
+
+fix_fingers(#server_state{fingers = Fingers} = State) ->
+    I = random:uniform(?MAXFINGERS - 1) + 1,
+    IthFinger = lists:nth(I, Fingers),
+    Successor = find_successor(State, IthFinger#finger.start),
+    NewIthFinger = IthFinger#finger{node = Successor},
+    Fingers1 = lists:sublist(Fingers, I-1) ++ [NewIthFinger] ++ lists:nthtail(I, Fingers),
+    State1 = State#server_state{fingers = Fingers1},
+    State1.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -283,10 +244,11 @@ get_successor(_State, #node{pid = Pid}) ->
 get_successor(State, State) ->
     get_successor(State).
 
-get_successor(#server_state{fingers = Fingers} = _State) ->
-    Finger = hd(Fingers),
-    Finger#finger.node.
+get_successor(#server_state{fingers = [#finger{node = Node} | _Tail]} = _State) ->
+    Node.
 
+set_successor(#server_state{fingers = [H | Tails]} = State, #node{} = Successor) ->
+    State#server_state{fingers = [H#finger{node = Successor} | Tails]}.
 
 get_predecessor(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}) ->
     get_predecessor(State);
