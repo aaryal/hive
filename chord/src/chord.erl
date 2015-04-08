@@ -64,13 +64,6 @@ init([_Config]) ->
             tref = TRef}}.
 
 
-create_empty_fingers(_Node, ?MAXFINGERS+1, Accl) ->
-    lists:reverse(Accl);
-create_empty_fingers(#node{id = N} = Node, K, Accl) ->
-    Start = round(N + math:pow(2, K-1)) rem ?NBITMOD,
-    KthFinger = #finger{start = Start, node = Node},
-    create_empty_fingers(Node, K+1, [KthFinger | Accl]).
-
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
 %%                                      {reply, Reply, State, Timeout} |
@@ -162,12 +155,10 @@ closest_preceding_finger(#server_state{fingers = Fingers} = State, Id) ->
     RFingers = lists:reverse(Fingers),
     closest_preceding_finger(State, Id, RFingers).
 
-%%%%%%%%%%%%%%%%%%%% remote symantics.. this should have a different signature %%%%%%%%%%%%%%%%%%%%
 closest_preceding_finger(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}, Id) ->
     closest_preceding_finger(State, Id);
 closest_preceding_finger(_, #node{pid = Pid}, Id) ->
     gen_server:call(Pid, {closest_preceding_finger, Id});
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 closest_preceding_finger(State, Id, [FingerI | RemainingFingers]) ->
     case between_oo(id_of(FingerI), {id_of(State), Id}) of
         true ->
@@ -205,9 +196,9 @@ stabilize(State) ->
             State1
     end.
 
-notify(#node{pid = Pid} = N, #server_state{self = #node{pid = Pid}} = State) ->
+notify(#node{pid = Pid}, #server_state{self = #node{pid = Pid}} = State) ->
     State;
-notify(#node{pid = Pid} = N, #server_state{self = Node} = State) ->
+notify(#node{pid = Pid}, #server_state{self = Node} = State) ->
     gen_server:cast(Pid, {notify, Node}),
     State;
 notify(#server_state{predecessor = Predecessor} = State, Nprime) ->
@@ -280,6 +271,13 @@ set_predecessor(#node{pid = Pid}, #server_state{self = Predecessor} = State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Utility stuff
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+create_empty_fingers(_Node, ?MAXFINGERS+1, Accl) ->
+    lists:reverse(Accl);
+create_empty_fingers(#node{id = N} = Node, K, Accl) ->
+    Start = round(N + math:pow(2, K-1)) rem ?NBITMOD,
+    KthFinger = #finger{start = Start, node = Node},
+    create_empty_fingers(Node, K+1, [KthFinger | Accl]).
 
 id_of(#server_state{self = Node}) ->
     id_of(Node);

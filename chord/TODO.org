@@ -25,3 +25,6 @@ chord:start().
 chord:status().
 chord:join().
 chord:status().
+
+# or any ID instead of 1.
+chord:successor(1).
