@@ -28,6 +28,8 @@
           self,                                 % #node{}
           predecessor,                          % node{}
           fingers = [],                         % [node{} | ...]
+          successor_list = [],                  % [node{} | ...]
+          monitors = [],                        % [pid() | pid() ...]
           tref
          }).
 

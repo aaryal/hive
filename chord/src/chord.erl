@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 -include_lib("defines.hrl").
 -compile(export_all).
-
+-define(LOG(MSG, ARGS), error_logger:info_msg(MSG, ARGS)).
 
 %%--------------------------------------------------------------------
 %% API
@@ -18,6 +18,15 @@ start_link() ->
 
 start() ->                                      % This is only for development
     start(?DEFAULT_CONFIG).
+
+start_all() ->
+    %% this doesn't work because of timing issues.
+    net_adm:world(),
+    rpc:multicall([node()| nodes()], chord, start, []),
+    rpc:multicall([node()| nodes()], chord, join, []).
+
+reload_all() ->
+    rpc:multicall([node() | nodes()], chord, reload, []).
 
 stop() ->
     gen_server:call(?SERVER, terminate).
@@ -113,12 +122,31 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State) ->
     ok.
 
+%% handle_info(run_stabilization_tasks, State) ->
+%%     try run_stabilization_tasks(State) of
+%%         State1 -> {noreply, State1}
+%%     catch
+%%         Type:Exception ->
+%%             error_logger:info_msg("Error stabilizing..~p:~p~n", [Type, Exception]),
+%%             {noreply, State}
+%%     end;
 handle_info(run_stabilization_tasks, State) ->
+    State1 = run_stabilization_tasks(State),
+    {noreply, State1};
+handle_info({'DOWN', Ref, process, Pid, _Reason}, State) ->
+    error_logger:info_msg("Pid down...~p~n", [Pid]),
+    demonitor(Ref),
+    State1 = replace_dead_successor(State, Pid),
+    self() ! run_stabilization_tasks,
+    {noreply, State1};
+handle_info(Info, State) ->
+    error_logger:info_msg("Got message...~p~n", [Info]),
+    {noreply, State}.
+
+run_stabilization_tasks(State) ->
     State1 = stabilize(State),
     State2 = fix_fingers(State1),
-    {noreply, State2};
-handle_info(_Info, State) ->
-    {noreply, State}.
+    State2.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -183,6 +211,7 @@ join(#server_state{} = State, Nprime) ->
     State2 = set_successor(State1, find_successor(State1, Nprime, id_of(State1))),
     State2.
 
+
 stabilize(State) ->
     Successor = get_successor(State),
     X = get_predecessor(State, Successor),
@@ -204,7 +233,7 @@ notify(#node{pid = Pid}, #server_state{self = Node} = State) ->
 notify(#server_state{predecessor = Predecessor} = State, Nprime) ->
     case Predecessor =:= nil orelse between_oo(id_of(Nprime), {id_of(Predecessor), id_of(State)}) of
         true ->
-            State1 = State#server_state{predecessor = Nprime},
+            State1 = set_predecessor(State, Nprime),
             State1;
         _ ->
             State
@@ -238,8 +267,58 @@ get_successor(State, State) ->
 get_successor(#server_state{fingers = [#finger{node = Node} | _Tail]} = _State) ->
     Node.
 
-set_successor(#server_state{fingers = [H | Tails]} = State, #node{} = Successor) ->
-    State#server_state{fingers = [H#finger{node = Successor} | Tails]}.
+set_successor(#server_state{fingers = [H | Tails], successor_list = SL} = State,
+              #node{pid = NewSuccessorPid} = Successor) ->
+    OldSuccessor = H#finger.node,
+    OldSuccessorList = case lists:member(OldSuccessor, SL) of
+                           true -> SL;
+                           false -> [OldSuccessor | SL]
+                       end,
+    State1 = setup_process_monitor(State, NewSuccessorPid),
+    State1#server_state{fingers = [H#finger{node = Successor} | Tails],
+                       successor_list = OldSuccessorList}.
+
+setup_process_monitor(#server_state{monitors = Lst} = State, Pid) ->
+    case lists:member(Pid, Lst) of
+        false ->
+            ?LOG("Monitoring: ~p~n", [Pid]),
+            monitor(process, Pid),
+            LL = [Pid | Lst],
+            State#server_state{monitors = LL};
+        _ ->
+            State
+    end.
+
+replace_dead_successor(#server_state{fingers = Fingers, successor_list = SL,
+                                     monitors = Monitors,
+                                     predecessor = Predecessor} = State, Pid) ->
+    SL1 = remove_dead_pid(SL, Pid),
+    NewSuccessor = hd(SL1),
+    NewFingers = replace_dead_successor(Fingers, Pid, NewSuccessor, []),
+    NewPredecessor = replace_dead_predecessor(Predecessor, Pid),
+    Monitors1 = [X || X <- Monitors, X =/= Pid],
+    State#server_state{fingers = NewFingers,
+                       predecessor = NewPredecessor,
+                       monitors = Monitors1,
+                       successor_list = SL1}.
+
+replace_dead_predecessor(#node{pid = Pid}, Pid) ->
+    nil;
+replace_dead_predecessor(Finger, _Pid) ->
+    Finger.
+
+replace_dead_successor([#finger{node = #node{pid = Pid}} = Finger | T], Pid, Replacement, Accl) ->
+    Finger1 = Finger#finger{node = Replacement},
+    replace_dead_successor(T, Pid, Replacement, [Finger1 | Accl]);
+replace_dead_successor([], _Pid, _Replacement, Accl) ->
+    lists:reverse(Accl);
+replace_dead_successor([H | T], Pid, Replacement, Accl) ->
+    replace_dead_successor(T, Pid, Replacement, [H | Accl]).
+
+
+remove_dead_pid(SL, Pid) ->
+    [X || X <- SL, X#node.pid =/= Pid].
+
 
 get_predecessor(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}) ->
     get_predecessor(State);
@@ -261,9 +340,10 @@ set_predecessor(State, #node{pid = Pid}, Predecessor) ->
 set_predecessor(State, State, Predecessor) ->
     set_predecessor(State, Predecessor).
 
-set_predecessor(#server_state{} = State, #node{} = Predecessor) ->
-    State1 = State#server_state{predecessor = Predecessor},
-    State1;
+set_predecessor(#server_state{} = State, #node{pid = Pid} = Predecessor) ->
+    State1 = setup_process_monitor(State, Pid),
+    State2 = State1#server_state{predecessor = Predecessor},
+    State2;
 set_predecessor(#node{pid = Pid}, #server_state{self = Predecessor} = State) ->
     gen_server:cast(Pid, {set_predecessor, Predecessor}),
     State.
