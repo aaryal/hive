@@ -2,12 +2,18 @@
 #+STARTUP: showeverything
 #+TODO: TODO IN-PROGRESS WAITING DONE
 
+* TODO Use https://code.google.com/p/nodefinder/ for node auto-discovery.
+
+* TODO implement a storage layer
+** TODO migrate keys (what to do with keys stored on a node that failed? memcached?)
+** TODO implement memcached protocol
+
 * DONE learn how to reload code on a gen_server.
   CLOSED: [2015-03-03 Tue 23:31]
 
-* TODO Use https://code.google.com/p/nodefinder/ for node auto-discovery.
 
-* TODO the network system detects nodes that are disconnected.
+* DONE the network system detects nodes that are disconnected.
+  CLOSED: [2015-04-08 Wed 23:23] using monitors instead.
   see if there's any way to hook into that for joining/leaving a cluster of nodes.
   error message:
   =ERROR REPORT==== 4-Mar-2015::08:28:45 ===
@@ -20,7 +26,8 @@ To run a node do this:
 erl -sname n2@localhost -setcookie c -boot start_sasl
 
 then, run
-net_adm:ping(n1@localhost).
+% net_adm:ping(n1@localhost).
+net_amd:world().
 chord:start().
 chord:status().
 chord:join().
