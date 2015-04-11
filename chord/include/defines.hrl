@@ -30,7 +30,8 @@
           fingers = [],                         % [node{} | ...]
           successor_list = [],                  % [node{} | ...]
           monitors = [],                        % [pid() | pid() ...]
-          tref
+          tref,
+          storage
          }).
 
 -record(finger, {
@@ -40,3 +41,9 @@
 
 %% Macros
 -define(SERVER, ?MODULE).
+
+-ifdef(DEBUG).
+-define(DEBUG(MSG, ARGS), error_logger:info_msg(MSG, ARGS)).
+-else.
+-define(DEBUG(MSG, ARGS),ok).
+-endif.

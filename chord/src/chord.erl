@@ -2,13 +2,35 @@
 -behaviour(gen_server).
 -include_lib("defines.hrl").
 -compile(export_all).
--define(LOG(MSG, ARGS), error_logger:info_msg(MSG, ARGS)).
 
 %%--------------------------------------------------------------------
 %% API
 %%--------------------------------------------------------------------
+
+get(Key) ->
+    Id = create_key(Key),
+    Successor = successor(Id),
+    get(Successor, Key).
+
+put(Key, Value) ->
+    Id = create_key(Key),
+    Successor = successor(Id),
+    put(Successor, Key, Value).
+
+
+%% ------------------------------------------------------------------
+%% Private
+%% ------------------------------------------------------------------
+get(#node{pid = Pid}, Key) ->
+    gen_server:call(Pid, {get, Key}).
+
+put(#node{pid = Pid}, Key, Value) ->
+    gen_server:cast(Pid, {put, Key, Value}),
+    ok.
+
 successor(Id) ->
     gen_server:call(?SERVER, {find_successor, Id}).
+
 
 %%====================================================================
 %% API (admin interface)
@@ -65,10 +87,13 @@ start(Config) ->
 init([_Config]) ->
     ShaInt = create_id(),
     SelfNode = #node{id = ShaInt, pid = self()},
+    StorageMod = storage_ets,              %TODO: make this a config variable
+    apply(StorageMod, init, []),
     {ok, TRef} = timer:send_interval(timer:seconds(5), run_stabilization_tasks),
     {ok, #server_state{
             self = SelfNode,
             predecessor = SelfNode,
+            storage = StorageMod,
             fingers = create_empty_fingers(SelfNode,1,[]),
             tref = TRef}}.
 
@@ -104,7 +129,10 @@ handle_call(get_successor, _From, State) ->
     {reply, Reply, State};
 handle_call(get_predecessor, _From, State) ->
     Reply = get_predecessor(State),
-    {reply, Reply, State}.
+    {reply, Reply, State};
+handle_call({get, Key}, _From, #server_state{storage = StorageMod} = State) ->
+    Result = apply(StorageMod, get, [Key]),
+    {reply, Result, State}.
 
 handle_cast({set_predecessor, #node{} = Predecessor}, State) ->
     State1 = set_predecessor(State, Predecessor),
@@ -112,6 +140,9 @@ handle_cast({set_predecessor, #node{} = Predecessor}, State) ->
 handle_cast({notify, Nprime}, State) ->
     State1 = notify(State, Nprime),
     {noreply, State1};
+handle_cast({put, Key, Value}, #server_state{storage = StorageMod} = State) ->
+    apply(StorageMod, put, [Key, Value]),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -281,7 +312,7 @@ set_successor(#server_state{fingers = [H | Tails], successor_list = SL} = State,
 setup_process_monitor(#server_state{monitors = Lst} = State, Pid) ->
     case lists:member(Pid, Lst) of
         false ->
-            ?LOG("Monitoring: ~p~n", [Pid]),
+            ?DEBUG("Monitoring: ~p~n", [Pid]),
             monitor(process, Pid),
             LL = [Pid | Lst],
             State#server_state{monitors = LL};
