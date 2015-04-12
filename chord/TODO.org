@@ -4,8 +4,10 @@
 
 * TODO Use https://code.google.com/p/nodefinder/ for node auto-discovery.
 
+* TODO gen_server means a single thread. how do i turn this into multi-threaded server?
+
 * TODO implement a storage layer
-** TODO migrate keys (what to do with keys stored on a node that failed? memcached?)
+** TODO migrate keys (what to do with keys stored on a node that failed? memcached-like non-durability?)
 ** TODO implement memcached protocol
 
 * DONE learn how to reload code on a gen_server.

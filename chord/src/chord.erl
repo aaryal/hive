@@ -239,7 +239,9 @@ join(#server_state{} = State, []) -> % This is the only node on the network
     State1;
 join(#server_state{} = State, Nprime) ->
     State1 = State#server_state{predecessor = nil},
-    State2 = set_successor(State1, find_successor(State1, Nprime, id_of(State1))),
+    Successor = find_successor(State1, Nprime, id_of(State1)),
+    %% TODO: move keys in (predecessor, n] from successor to Self.
+    State2 = set_successor(State1, Successor),
     State2.
 
 
