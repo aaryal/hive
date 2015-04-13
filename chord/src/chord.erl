@@ -15,7 +15,8 @@ get(Key) ->
 put(Key, Value) ->
     Id = create_key(Key),
     Successor = successor(Id),
-    put(Successor, Key, Value).
+    ok = put(Successor, Key, Value),
+    {ok, Successor, Id}.
 
 
 %% ------------------------------------------------------------------
@@ -143,6 +144,10 @@ handle_cast({notify, Nprime}, State) ->
 handle_cast({put, Key, Value}, #server_state{storage = StorageMod} = State) ->
     apply(StorageMod, put, [Key, Value]),
     {noreply, State};
+handle_cast({migrate_keys, MigrateTo}, State) ->
+    ?DEBUG("Migrating some keys to ~p~n", [MigrateTo]),
+    spawn(chord, migrate_keys, [State, MigrateTo]),    %Not sure if i should use spawn_link here.
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -187,6 +192,19 @@ run_stabilization_tasks(State) ->
 %% the paper.  it will have erlang-isms. for example, pattern matching
 %% and recursion instead of if-then-else and for-loops
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+migrate_keys(#server_state{storage = Storage}, #node{id = Id} = MigrateTo) ->
+    F = fun(Key, Value) ->
+                KeyId = create_key(Key),
+                case KeyId =< Id of
+                    true ->
+                        put(MigrateTo, Key, Value),
+                        true;
+                    _ ->
+                        false
+                end
+        end,
+    apply(Storage, matching_delete, [F]).
 
 find_successor(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}, Id) ->
     find_successor(State, Id);
@@ -240,8 +258,9 @@ join(#server_state{} = State, []) -> % This is the only node on the network
 join(#server_state{} = State, Nprime) ->
     State1 = State#server_state{predecessor = nil},
     Successor = find_successor(State1, Nprime, id_of(State1)),
-    %% TODO: move keys in (predecessor, n] from successor to Self.
     State2 = set_successor(State1, Successor),
+    %% TODO: move keys in (predecessor, n] from successor to Self.
+    gen_server:cast(Successor#node.pid, {migrate_keys, State2#server_state.self}),
     State2.
 
 

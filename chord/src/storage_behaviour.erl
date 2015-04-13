@@ -8,3 +8,6 @@
 
 -callback put(Key :: string(), Value :: any()) ->
     'ok' | tuple('error', Reason :: string()).
+
+-callback matching_delete(Fun :: fun()) ->
+    'ok'.
