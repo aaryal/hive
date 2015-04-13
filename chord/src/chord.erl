@@ -158,17 +158,17 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State) ->
     ok.
 
-%% handle_info(run_stabilization_tasks, State) ->
-%%     try run_stabilization_tasks(State) of
-%%         State1 -> {noreply, State1}
-%%     catch
-%%         Type:Exception ->
-%%             error_logger:info_msg("Error stabilizing..~p:~p~n", [Type, Exception]),
-%%             {noreply, State}
-%%     end;
 handle_info(run_stabilization_tasks, State) ->
-    State1 = run_stabilization_tasks(State),
-    {noreply, State1};
+    try run_stabilization_tasks(State) of
+        State1 -> {noreply, State1}
+    catch
+        Type:Exception ->
+            error_logger:info_msg("Error stabilizing..~p:~p~n", [Type, Exception]),
+            {noreply, State}
+    end;
+%% handle_info(run_stabilization_tasks, State) ->
+%%     State1 = run_stabilization_tasks(State),
+%%     {noreply, State1};
 handle_info({'DOWN', Ref, process, Pid, _Reason}, State) ->
     error_logger:info_msg("Pid down...~p~n", [Pid]),
     demonitor(Ref),
