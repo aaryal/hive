@@ -155,7 +155,9 @@ code_change(_OldVsn, State, _Extra) ->
     io:format(user, "Code change..~n", []),
     {ok, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    Successor = get_successor(State),
+    migrate_all(State, Successor),
     ok.
 
 handle_info(run_stabilization_tasks, State) ->
@@ -193,6 +195,19 @@ run_stabilization_tasks(State) ->
 %% and recursion instead of if-then-else and for-loops
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+migrate_all(#server_state{ self = #node{ pid = Pid}}, #node{pid = Pid}) ->
+    %% migrating to self..
+    ok;
+migrate_all(#server_state{storage = Storage}, MigrateTo) ->
+    F = fun(Key, Value) ->
+                put(MigrateTo, Key, Value),
+                true
+        end,
+    apply(Storage, matching_delete, [F]).
+
+migrate_keys(#server_state{self = #node{pid = Pid}}, #node{pid = Pid}) ->
+    %% migrating to self..
+    ok;
 migrate_keys(#server_state{storage = Storage}, #node{id = Id} = MigrateTo) ->
     F = fun(Key, Value) ->
                 KeyId = create_key(Key),
