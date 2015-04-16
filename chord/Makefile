@@ -9,8 +9,8 @@ ERLCFLAGS=-I include #+debug_info
 SOURCES=$(wildcard $(SRCDIR)/*.erl)
 OBJECTS=$(addprefix $(OBJDIR)/, $(notdir $(SOURCES:.erl=.beam)))
 
-APPSRC=$(wildcard $(SRCDIR)/*.app_src)
-APPS=$(addprefix $(OBJDIR)/, $(notdir $(APPSRC:.app_src=.app)))
+APPSRC=$(wildcard $(SRCDIR)/*.app.src)
+APPS=$(addprefix $(OBJDIR)/, $(notdir $(APPSRC:.app.src=.app)))
 
 TEMPLATES=$(wildcard $(TEMPLATEDIR)/*.dtl)
 TEMPLATE_OBJECTS=$(addprefix $(OBJDIR)/, $(notdir $(TEMPLATES:.dtl=.beam)))
@@ -40,7 +40,7 @@ $(OBJDIR)/%.beam: $(TEMPLATEDIR)/%.dtl | $(OBJDIR)
 $(OBJDIR)/%.beam: $(SRCDIR)/%.erl | $(OBJDIR)
 	$(ERLC) $(ERLCFLAGS) -o $(OBJDIR) $<
 
-$(OBJDIR)/%.app: $(SRCDIR)/%.app_src | $(OBJDIR)
+$(OBJDIR)/%.app: $(SRCDIR)/%.app.src | $(OBJDIR)
 	cp $< $@
 
 #see this: http://www.gnu.org/software/make/manual/html_node/Pattern-Match.html
