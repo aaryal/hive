@@ -89,7 +89,6 @@ init([_Config]) ->
     ShaInt = create_id(),
     SelfNode = #node{id = ShaInt, pid = self()},
     StorageMod = storage_ets,              %TODO: make this a config variable
-    apply(StorageMod, init, []),
     {ok, TRef} = timer:send_interval(timer:seconds(5), run_stabilization_tasks),
     {ok, #server_state{
             self = SelfNode,

@@ -2,11 +2,13 @@
 -behaviour(storage_behaviour).
 -behaviour(gen_server).
 -include_lib("defines.hrl").
--export([put/2, get/1, init/0, matching_delete/1, dump/0]).
+-export([put/2, get/1, start_link/0, matching_delete/1, dump/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 -record(state, {table = nil}).
 
-init() ->
+%% TODO: Don't use ?MODULE or ?SERVER to name the gen_server. we want
+%% to be able to use this code in multiple apps on the same node.
+start_link() ->
     Config = nil,
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Config], []).
 

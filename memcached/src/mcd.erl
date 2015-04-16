@@ -19,10 +19,16 @@ recieve_send(Socket) ->
     Response = handle(Request),
     send(Socket, Response).
 
-handle(#request{op_code = ?OP_GetK, key = Key}) ->
-    %% TODO: interact with chord
-    Response = #response{key = Key, value = Key},
-    Response;
+
+build_response(_, not_found) ->
+    #response{status = ?RS_KeyNotFound, value = <<"Not Found">>};
+build_response(#request{key = Key}, {ok, Value}) ->
+    #response{key = Key, value = Value}.
+
+
+handle(#request{op_code = ?OP_GetK, key = Key} = Request) ->
+    Resp = chord:get(Key),
+    build_response(Request, Resp);
 handle(#request{} = _Request) ->
     #response{status = ?RS_UnknownCmd}.
 haneld({error, _Err}) ->

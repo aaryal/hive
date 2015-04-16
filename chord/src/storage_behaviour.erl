@@ -1,6 +1,6 @@
 -module(storage_behaviour).
 
--callback init() ->
+-callback start_link() ->
     ok.
 
 -callback get(Key :: string()) ->

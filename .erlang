@@ -1,0 +1,2 @@
+code:add_path("chord/ebin").
+code:add_path("memcached/ebin").

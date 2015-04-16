@@ -77,7 +77,6 @@ init([]) ->
 
 %% Notification event coming from client
 'WAIT_FOR_DATA'({data, Data}, #state{socket=Socket} = State) ->
-    error_logger:info_msg("Trying to decode: ~p~n", [Data]),
     %ok = gen_tcp:send(Socket, io_lib:format("I got your data: ~s~n", [Data])),
     Request = mcd:decode({data, Data}),
     Response = mcd:handle(Request),

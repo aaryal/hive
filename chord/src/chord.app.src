@@ -1,0 +1,15 @@
+{application, chord,
+ [
+  {description, "chord server"},
+  {vsn, "1.0"},
+  {id, "chord"},
+  {modules,      [chord, storage_ets, chord_app, chord_sup]},
+  {registered,   []},
+  {applications, [kernel, stdlib, sasl]},
+  %%
+  %% mod: Specify the module name to start the application, plus args
+  %%
+  {mod, {chord_app, []}},
+  {env, []}
+ ]
+}.
