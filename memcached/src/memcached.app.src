@@ -1,0 +1,16 @@
+{application, memcached,
+ [
+  {description, "Memcached server"},
+  {vsn, "1.0"},
+  {id, "memcached"},
+  {modules,      [mcd, memcached_app, tcp_listener, memcached_fsm]},
+  {registered,   []},
+  {applications, [kernel, stdlib, sasl]},
+  %%
+  %% mod: Specify the module name to start the application, plus args
+  %%
+  {mod, {memcached_app, []}},
+  {env, []}
+
+ ]
+}.

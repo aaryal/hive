@@ -1,0 +1,2 @@
+code:add_path("ebin").
+code:add_path("../chord/ebin").
