@@ -20,18 +20,32 @@ recieve_send(Socket) ->
     send(Socket, Response).
 
 
-build_response(_, not_found) ->
-    #response{status = ?RS_KeyNotFound, value = <<"Not Found">>};
-build_response(#request{key = Key}, {ok, Value}) ->
-    #response{key = Key, value = Value}.
+build_response(not_found, #response{} = Resp) ->
+    Resp#response{status = ?RS_KeyNotFound, value = <<"Not Found">>};
+build_response({ok, Value}, #response{} = Resp) ->
+    Resp#response{extras = <<16#deadbeef>>, cas = 16#1, value = Value}.
 
 
-handle(#request{op_code = ?OP_GetK, key = Key} = Request) ->
+handle(#request{op_code = ?OP_GetK, key = Key}) ->
     Resp = chord:get(Key),
-    build_response(Request, Resp);
+    build_response(Resp, #response{key = Key});
+handle(#request{op_code = ?OP_Get, key = Key}) ->
+    Resp = chord:get(Key),
+    build_response(Resp, #response{});
+handle(#request{op_code = ?OP_Set, key = Key, value = Value}) ->
+    chord:put(Key, Value),
+    #response{op_code = ?RS_KeyExists};
+handle(#request{op_code = ?OP_Add, key = Key, value = Value}) ->
+    chord:put(Key, Value),
+    #response{op_code = ?RS_KeyExists};
+handle(#request{op_code = ?OP_Quit}) ->
+    #response{};
+handle(#request{op_code = ?OP_Flush}) ->
+    %% TODO: delete all entries from chord. the 'extras' field might specify the timeout for when to do it.
+    #response{};
 handle(#request{} = _Request) ->
-    #response{status = ?RS_UnknownCmd}.
-haneld({error, _Err}) ->
+    #response{status = ?RS_UnknownCmd};
+handle({error, _Err}) ->
     #response{status = ?RS_UnknownCmd}.
 
 
@@ -42,8 +56,8 @@ encode_response(#response{op_code = Opcode, data_type = DataType,
                           extras = Extras,
                           key = Key,
                           value = Value
-                         } = Response) ->
-    error_logger:info_msg("Encoding: ~p~n", [Response]),
+                         } = _Response) ->
+    % error_logger:info_msg("Encoding: ~p~n", [Response]),
     Magic = 16#81,
     KeySize = size(Key),
     ExtrasSize = size(Extras),
@@ -51,7 +65,7 @@ encode_response(#response{op_code = Opcode, data_type = DataType,
     BodySize = size(Body),
     Resp = <<Magic:8, Opcode:8, KeySize:16, ExtrasSize:8, DataType:8,
              Status:16, BodySize:32, Opaque:32, CAS:64, Body/binary>>,
-    error_logger:info_msg("Encoded to: ~p~n", [Resp]),
+    % error_logger:info_msg("Encoded to: ~p~n", [Resp]),
     Resp.
 
 recv_header(Socket) ->

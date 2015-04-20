@@ -13,12 +13,12 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Config], []).
 
 put(Key, Value) ->
-    ?DEBUG("Saving ~p -> ~p ~n", [Key, Value]),
+    %?DEBUG("Saving ~p -> ~p ~n", [Key, Value]),
     gen_server:cast(?MODULE, {put, Key, Value}),
     ok.
 
 get(Key) ->
-    ?DEBUG("Getting ~p~n", [Key]),
+    %?DEBUG("Getting ~p~n", [Key]),
     gen_server:call(?MODULE, {get, Key}).
 
 matching_delete(Matcher) ->

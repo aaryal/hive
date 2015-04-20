@@ -5,10 +5,14 @@
 * TODO Use https://code.google.com/p/nodefinder/ for node auto-discovery.
 
 * TODO gen_server means a single thread. how do i turn this into multi-threaded server?
+  the problem is that since the timer thread runs the stabilization
+  method periodically, gen_server is tied up with handling that
+  message. If another request comes in, it times out and that kills
+  the gen_server. There's gotta be a better way.
 
-* TODO implement a storage layer
-** TODO migrate keys (what to do with keys stored on a node that failed? memcached-like non-durability?)
-** TODO implement memcached protocol
+* IN-PROGRESS implement a storage layer
+** IN-PROGRESS migrate keys (what to do with keys stored on a node that failed? memcached-like non-durability?)
+** IN-PROGRESS implement memcached protocol
 
 * DONE learn how to reload code on a gen_server.
   CLOSED: [2015-03-03 Tue 23:31]
@@ -25,7 +29,7 @@
     had to replace asterisk with a plus.
 
 To run a node do this:
-erl -sname n2@localhost -setcookie c -boot start_sasl
+erl -sname n1@localhost -boot start_sasl -sasl sasl_error_logger '{file, "log.n1.log"}'
 
 then, run
 % net_adm:ping(n1@localhost).

@@ -80,11 +80,13 @@ init([]) ->
     %ok = gen_tcp:send(Socket, io_lib:format("I got your data: ~s~n", [Data])),
     Request = mcd:decode({data, Data}),
     Response = mcd:handle(Request),
+    %error_logger:info_msg("Request: ~p~nResponse: ~p~n", [Request, Response]),
     mcd:send(Socket, Response),
+    %TODO: if the request was to quit, return {stop, normal, State}
     {next_state, 'WAIT_FOR_DATA', State, ?TIMEOUT};
 
 'WAIT_FOR_DATA'(timeout, State) ->
-    error_logger:error_msg("~p Client connection timeout - closing.\n", [self()]),
+    %error_logger:error_msg("~p Client connection timeout - closing.\n", [self()]),
     {stop, normal, State};
 
 'WAIT_FOR_DATA'(Data, State) ->
@@ -127,8 +129,8 @@ handle_info({tcp, Socket, Bin}, StateName, #state{socket=Socket} = StateData) ->
     ?MODULE:StateName({data, Bin}, StateData);
 
 handle_info({tcp_closed, Socket}, _StateName,
-            #state{socket=Socket, addr=Addr} = StateData) ->
-    error_logger:info_msg("~p Client ~p disconnected.\n", [self(), Addr]),
+            #state{socket=Socket, addr=_Addr} = StateData) ->
+    %error_logger:info_msg("~p Client ~p disconnected.\n", [self(), Addr]),
     {stop, normal, StateData};
 
 handle_info(_Info, StateName, StateData) ->

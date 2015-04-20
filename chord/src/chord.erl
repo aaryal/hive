@@ -141,7 +141,9 @@ handle_cast({notify, Nprime}, State) ->
     State1 = notify(State, Nprime),
     {noreply, State1};
 handle_cast({put, Key, Value}, #server_state{storage = StorageMod} = State) ->
-    apply(StorageMod, put, [Key, Value]),
+    ?DEBUG("Saving ~p~n", [Key]),
+    StorageMod:put(Key, Value),
+    %apply(StorageMod, put, [Key, Value]),
     {noreply, State};
 handle_cast({migrate_keys, MigrateTo}, State) ->
     ?DEBUG("Migrating some keys to ~p~n", [MigrateTo]),
