@@ -39,8 +39,6 @@
           node                                  % #node{}
          }).
 
-%% Macros
--define(SERVER, ?MODULE).
 
 -ifdef(DEBUG).
 -define(DEBUG(MSG, ARGS), error_logger:info_msg(MSG, ARGS)).

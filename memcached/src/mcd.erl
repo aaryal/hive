@@ -27,16 +27,16 @@ build_response({ok, Value}, #response{} = Resp) ->
 
 
 handle(#request{op_code = ?OP_GetK, key = Key}) ->
-    Resp = chord:get(Key),
+    Resp = chord_server:get(Key),
     build_response(Resp, #response{key = Key});
 handle(#request{op_code = ?OP_Get, key = Key}) ->
-    Resp = chord:get(Key),
+    Resp = chord_server:get(Key),
     build_response(Resp, #response{});
 handle(#request{op_code = ?OP_Set, key = Key, value = Value}) ->
-    chord:put(Key, Value),
+    chord_server:put(Key, Value),
     #response{op_code = ?RS_KeyExists};
 handle(#request{op_code = ?OP_Add, key = Key, value = Value}) ->
-    chord:put(Key, Value),
+    chord_server:put(Key, Value),
     #response{op_code = ?RS_KeyExists};
 handle(#request{op_code = ?OP_Quit}) ->
     #response{};

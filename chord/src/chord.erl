@@ -1,79 +1,8 @@
 -module(chord).
--behaviour(gen_server).
 -include_lib("defines.hrl").
 -compile(export_all).
 
-%%--------------------------------------------------------------------
-%% API
-%%--------------------------------------------------------------------
-
-get(Key) ->
-    Id = create_key(Key),
-    Successor = successor(Id),
-    get(Successor, Key).
-
-put(Key, Value) ->
-    Id = create_key(Key),
-    Successor = successor(Id),
-    ok = put(Successor, Key, Value),
-    {ok, Successor, Id}.
-
-
-%% ------------------------------------------------------------------
-%% Private
-%% ------------------------------------------------------------------
-get(#node{pid = Pid}, Key) ->
-    gen_server:call(Pid, {get, Key}).
-
-put(#node{pid = Pid}, Key, Value) ->
-    gen_server:cast(Pid, {put, Key, Value}),
-    ok.
-
-successor(Id) ->
-    gen_server:call(?SERVER, {find_successor, Id}).
-
-
-%%====================================================================
-%% API (admin interface)
-%%====================================================================
-start_link() ->
-    start_link(?DEFAULT_CONFIG).
-
-start() ->                                      % This is only for development
-    start(?DEFAULT_CONFIG).
-
-start_all() ->
-    %% this doesn't work because of timing issues.
-    net_adm:world(),
-    rpc:multicall([node()| nodes()], chord, start, []),
-    rpc:multicall([node()| nodes()], chord, join, []).
-
-reload_all() ->
-    rpc:multicall([node() | nodes()], chord, reload, []).
-
-stop() ->
-    gen_server:call(?SERVER, terminate).
-
-status() ->
-    gen_server:call(?SERVER, status).
-
-join() ->
-    gen_server:call(?SERVER, initiate_join).
-
-reload() ->                                     % This is only for development
-    sys:suspend(?SERVER),
-    code:purge(?MODULE),
-    code:load_file(?MODULE),
-    sys:change_code(?SERVER, ?SERVER, "0", []),
-    sys:resume(?SERVER).
-
-start_link(Config) ->
-    Result = gen_server:start_link({local, ?SERVER}, ?MODULE, [Config], []),
-    Result.
-
-start(Config) ->
-    Result = gen_server:start({local, ?SERVER}, ?MODULE, [Config], []),
-    Result.
+-define(SERVER, chord_server).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% OTP
@@ -86,7 +15,7 @@ start(Config) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([_Config]) ->
-    ShaInt = create_id(),
+    ShaInt = chord_server:create_id(),
     SelfNode = #node{id = ShaInt, pid = self()},
     StorageMod = storage_ets,              %TODO: make this a config variable
     {ok, TRef} = timer:send_interval(timer:seconds(5), run_stabilization_tasks),
@@ -131,7 +60,7 @@ handle_call(get_predecessor, _From, State) ->
     Reply = get_predecessor(State),
     {reply, Reply, State};
 handle_call({get, Key}, _From, #server_state{storage = StorageMod} = State) ->
-    Result = apply(StorageMod, get, [Key]),
+    Result = StorageMod:get(Key),
     {reply, Result, State}.
 
 handle_cast({set_predecessor, #node{} = Predecessor}, State) ->
@@ -141,7 +70,7 @@ handle_cast({notify, Nprime}, State) ->
     State1 = notify(State, Nprime),
     {noreply, State1};
 handle_cast({put, Key, Value}, #server_state{storage = StorageMod} = State) ->
-    ?DEBUG("Saving ~p~n", [Key]),
+    %?DEBUG("Saving ~p~n", [Key]),
     StorageMod:put(Key, Value),
     %apply(StorageMod, put, [Key, Value]),
     {noreply, State};
@@ -152,35 +81,6 @@ handle_cast({migrate_keys, MigrateTo}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-code_change(_OldVsn, State, _Extra) ->
-    io:format(user, "Code change..~n", []),
-    {ok, State}.
-
-terminate(_Reason, State) ->
-    Successor = get_successor(State),
-    migrate_all(State, Successor),
-    ok.
-
-handle_info(run_stabilization_tasks, State) ->
-    try run_stabilization_tasks(State) of
-        State1 -> {noreply, State1}
-    catch
-        Type:Exception ->
-            error_logger:info_msg("Error stabilizing..~p:~p~n", [Type, Exception]),
-            {noreply, State}
-    end;
-%% handle_info(run_stabilization_tasks, State) ->
-%%     State1 = run_stabilization_tasks(State),
-%%     {noreply, State1};
-handle_info({'DOWN', Ref, process, Pid, _Reason}, State) ->
-    error_logger:info_msg("Pid down...~p~n", [Pid]),
-    demonitor(Ref),
-    State1 = replace_dead_successor(State, Pid),
-    self() ! run_stabilization_tasks,
-    {noreply, State1};
-handle_info(Info, State) ->
-    error_logger:info_msg("Got message...~p~n", [Info]),
-    {noreply, State}.
 
 run_stabilization_tasks(State) ->
     State1 = stabilize(State),
@@ -201,10 +101,10 @@ migrate_all(#server_state{ self = #node{ pid = Pid}}, #node{pid = Pid}) ->
     ok;
 migrate_all(#server_state{storage = Storage}, MigrateTo) ->
     F = fun(Key, Value) ->
-                put(MigrateTo, Key, Value),
+                chord_server:put(MigrateTo, Key, Value),
                 true
         end,
-    apply(Storage, matching_delete, [F]).
+    Storage:matching_delete(F).
 
 migrate_keys(#server_state{self = #node{pid = Pid}}, #node{pid = Pid}) ->
     %% migrating to self..
@@ -214,13 +114,13 @@ migrate_keys(#server_state{storage = Storage}, #node{id = Id} = MigrateTo) ->
                 KeyId = create_key(Key),
                 case KeyId =< Id of
                     true ->
-                        put(MigrateTo, Key, Value),
+                        chord_server:put(MigrateTo, Key, Value),
                         true;
                     _ ->
                         false
                 end
         end,
-    apply(Storage, matching_delete, [F]).
+    Storage:matching_delete(F).
 
 find_successor(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}, Id) ->
     find_successor(State, Id);
@@ -336,56 +236,14 @@ get_successor(#server_state{fingers = [#finger{node = Node} | _Tail]} = _State) 
     Node.
 
 set_successor(#server_state{fingers = [H | Tails], successor_list = SL} = State,
-              #node{pid = NewSuccessorPid} = Successor) ->
+              #node{} = Successor) ->
     OldSuccessor = H#finger.node,
     OldSuccessorList = case lists:member(OldSuccessor, SL) of
                            true -> SL;
                            false -> [OldSuccessor | SL]
                        end,
-    State1 = setup_process_monitor(State, NewSuccessorPid),
-    State1#server_state{fingers = [H#finger{node = Successor} | Tails],
+    State#server_state{fingers = [H#finger{node = Successor} | Tails],
                        successor_list = OldSuccessorList}.
-
-setup_process_monitor(#server_state{monitors = Lst} = State, Pid) ->
-    case lists:member(Pid, Lst) of
-        false ->
-            ?DEBUG("Monitoring: ~p~n", [Pid]),
-            monitor(process, Pid),
-            LL = [Pid | Lst],
-            State#server_state{monitors = LL};
-        _ ->
-            State
-    end.
-
-replace_dead_successor(#server_state{fingers = Fingers, successor_list = SL,
-                                     monitors = Monitors,
-                                     predecessor = Predecessor} = State, Pid) ->
-    SL1 = remove_dead_pid(SL, Pid),
-    NewSuccessor = hd(SL1),
-    NewFingers = replace_dead_successor(Fingers, Pid, NewSuccessor, []),
-    NewPredecessor = replace_dead_predecessor(Predecessor, Pid),
-    Monitors1 = [X || X <- Monitors, X =/= Pid],
-    State#server_state{fingers = NewFingers,
-                       predecessor = NewPredecessor,
-                       monitors = Monitors1,
-                       successor_list = SL1}.
-
-replace_dead_predecessor(#node{pid = Pid}, Pid) ->
-    nil;
-replace_dead_predecessor(Finger, _Pid) ->
-    Finger.
-
-replace_dead_successor([#finger{node = #node{pid = Pid}} = Finger | T], Pid, Replacement, Accl) ->
-    Finger1 = Finger#finger{node = Replacement},
-    replace_dead_successor(T, Pid, Replacement, [Finger1 | Accl]);
-replace_dead_successor([], _Pid, _Replacement, Accl) ->
-    lists:reverse(Accl);
-replace_dead_successor([H | T], Pid, Replacement, Accl) ->
-    replace_dead_successor(T, Pid, Replacement, [H | Accl]).
-
-
-remove_dead_pid(SL, Pid) ->
-    [X || X <- SL, X#node.pid =/= Pid].
 
 
 get_predecessor(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}) ->
@@ -399,7 +257,6 @@ get_predecessor(#server_state{predecessor = Predecessor} = _State) ->
     Predecessor.
 
 
-
 set_predecessor(#server_state{self = #node{ pid = Pid}} = State, #node{pid = Pid}, Predecessor) ->
     set_predecessor(State, Predecessor);
 set_predecessor(State, #node{pid = Pid}, Predecessor) ->
@@ -408,10 +265,9 @@ set_predecessor(State, #node{pid = Pid}, Predecessor) ->
 set_predecessor(State, State, Predecessor) ->
     set_predecessor(State, Predecessor).
 
-set_predecessor(#server_state{} = State, #node{pid = Pid} = Predecessor) ->
-    State1 = setup_process_monitor(State, Pid),
-    State2 = State1#server_state{predecessor = Predecessor},
-    State2;
+set_predecessor(#server_state{} = State, #node{} = Predecessor) ->
+    State1 = State#server_state{predecessor = Predecessor},
+    State1;
 set_predecessor(#node{pid = Pid}, #server_state{self = Predecessor} = State) ->
     gen_server:cast(Pid, {set_predecessor, Predecessor}),
     State.
@@ -433,6 +289,15 @@ id_of(#finger{node = Node}) ->
     id_of(Node);
 id_of(#node{id = Id}) ->
     Id.
+
+
+pid_of(#finger{node = Node}) ->
+    pid_of(Node);
+pid_of(#node{pid = Pid}) ->
+    Pid;
+pid_of(Pid) when is_pid(Pid) ->
+    Pid.
+
 
 %% Half-open interval (n, s]
 between_oc(_QueryId, {Start, Start}) ->
@@ -458,20 +323,6 @@ between_oo(QueryId, {Start, End}) when Start < End -> % interval does not wrap
 between_oo(QueryId, {Start, End}) ->           % interval wraps
     Start < QueryId orelse QueryId < End.
 
-
-registered_name() ->
-    P = self(),
-    case lists:keyfind(registered_name, 1, process_info(P)) of
-        {registered_name, Name} ->
-            atom_to_list(Name);
-        _ ->
-            %% TODO: Raise an error here. we want to use named chords.
-            pid_to_list(P)
-    end.
-
-create_id() ->
-    Id = atom_to_list(node()) ++ registered_name(),
-    create_key(Id).
 
 create_key(Str) ->
     Sha = hexstring(Str),

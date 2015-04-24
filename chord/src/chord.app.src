@@ -3,7 +3,7 @@
   {description, "chord server"},
   {vsn, "1.0"},
   {id, "chord"},
-  {modules,      [chord, storage_ets, chord_app, chord_sup]},
+  {modules,      [chord_server, chord, storage_ets, chord_app, chord_sup]},
   {registered,   []},
   {applications, [kernel, stdlib, sasl]},
   %%
