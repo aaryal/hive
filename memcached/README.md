@@ -26,6 +26,7 @@ and
 ````
 
 Findings:
+
 1. This memcached is about 10x slower than the official memcached when
    running chord on about 5 nodes.
 2. It is about 2x slower when running chord on a single node.
@@ -50,6 +51,7 @@ and
 ````
 
 Findings:
+
 1. Erlang version still 10x slow.
 2. Official version causes multiple connection timeout errors. Cannot
    use all the CPU available.
