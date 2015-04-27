@@ -1,14 +1,14 @@
-= Hive =
+# Hive
 
 A collection of distributed algorithms. See subdirectories..
 
 
-== [chord](chord) ==
+## [chord](chord)
 
 Distributed hash table.
 
 
-== [memcached](memcached) ==
+## [memcached](memcached)
 
 An implementation of the memcached protocol built mainly to excercise
 the chord algorithm. It is slower than THE memcached by about a factor
@@ -17,9 +17,9 @@ it implements just the binary protocol enough to make memslap think
 it's talking to a real memcached server.
 
 
-== more to come... ==
+## more to come...
 
-== HOWTO ==
+## HOWTO
 
 Chord And Memcached are both Erlang 'application'. Chord can be used
 stand alone from within Erlang. To provide an external interface to
