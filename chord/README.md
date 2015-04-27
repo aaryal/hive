@@ -20,20 +20,33 @@ This is an implementation of the chord algorithm. The major goals are:
 
 1. Start 4-5 terminal sessions.
 2. On each terminal run `erl -sname nX@localhost` where X is a number
-   that is distinct on each terminal (See notes on **Node Names** at
-   the end).
+   that is distinct on each terminal (**Important**: see [Node Names](#node-names)).
 3. After starting erlang on all the terminals, at the `erl>` prompt, type the following set of commands:
+
+````
     erl> net_adm:world().
     erl> application:ensure_all_started(chord).
     erl> chord_server:join().
+````
 
 Then, on one node do:
+
+````
     erl> chord_server:put("ABC", "def").
+````
+
 And on another node, do:
+
+````
     erl> chord_server:put("XyZ", "xxx").
+````
+
 And then, on yet another node do:
+
+````
     erl> chord_server:get("ABC").
     erl> chord_server:get("XyZ").
+````
 
 ### Nodes leaving and joining
 
@@ -49,9 +62,13 @@ And then, on yet another node do:
 Conversly, to add a new node,
 1. On the node that you quit erlang on, rerun the `erl ..` command
 2. run
+
+````
     erl> net_adm:world().
     erl> application:ensure_all_started(chord).
     erl> chord_server:status()
+````
+
 3. Note the finger table and the predecessor: itself. Run the
     `chord_server:status()` on other nodes and see that no one is
     referencing this node.
@@ -59,14 +76,18 @@ Conversly, to add a new node,
     erl> chord_server:join().
 5. Repeat #3 and see that it's now part of the ring.
 
-**Important**: there is a .hosts.erlang file that says to look for other
- nodes only on localhost. If you want to try it out on different
- physical nodes, be sure to edit the .hosts.erlang file or otherwise
- use the appropriate `net_adm:ping/1` commands instead of
- `net_adm:world/0`. In the future, I'll probably integrate some method
- to auto-discover nodes running chord.
+##### Important
 
-**Node Names**: It's best right now to use n1, n2, n3, n4, n5 and n6 as your node names.
+there is a .hosts.erlang file that says to look for
+other nodes only on localhost. If you want to try it out on different
+physical nodes, be sure to edit the .hosts.erlang file or otherwise
+use the appropriate `net_adm:ping/1` commands instead of
+`net_adm:world/0`. In the future, I'll probably integrate some method
+to auto-discover nodes running chord.
+
+##### Node Names
+
+It's best right now to use n1, n2, n3, n4, n5 and n6 as your node names.
 Here's what they map to in the chord id:
 
     n1: 2

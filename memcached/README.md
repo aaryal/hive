@@ -11,13 +11,19 @@ compare chord against memcached.
 
 
 ## Preliminary findings
-Ran the official memcached using `memcached -d`. And ran this memcached using instructions from [here](../).
+Ran the official memcached using `memcached -d`. And ran this Erlang memcached using instructions from [Here](../Readme.md#howto).
 
 ### Speed test
 Using
+````
     memslap --servers=127.0.0.1:11211 --concurrency=100 --execute-number=100 --initial-load=10 --flush --binary
+````
+
 and
+
+````
     memslap --servers=127.0.0.1:2222 --concurrency=100 --execute-number=100 --initial-load=10 --flush --binary
+````
 
 Findings:
 1. This memcached is about 10x slower than the official memcached when
@@ -32,15 +38,24 @@ Findings:
 ### Load test
 
 Using
+
+````
     memslap --servers=127.0.0.1:11211 --concurrency=1000 --execute-number=1000 --initial-load=10 --flush --binary
+````
+
 and
+
+````
     memslap --servers=127.0.0.1:2222 --concurrency=1000 --execute-number=1000 --initial-load=10 --flush --binary
+````
 
 Findings:
 1. Erlang version still 10x slow.
-2. Official version causes multiple connection timeout errors. Cannot use all the CPU available.
+2. Official version causes multiple connection timeout errors. Cannot
+   use all the CPU available.
 3. Erlang version has no errors. Uses all the CPUs (cores) available.
-4. I suspect that if there were more cores available, the Erlang version would scale up and may reduce the speed gap.
+4. I suspect that if there were more cores available, the Erlang
+   version would scale up and may reduce the speed gap.
 
 
 ## Node failures
