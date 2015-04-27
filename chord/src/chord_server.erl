@@ -274,6 +274,9 @@ registered_name() ->
     end.
 
 create_id() ->
+    %% TODO: if we create an id that hashes to something another
+    %% existing node hashes to, we're in trouble. Maybe, retry with a
+    %% random bit added to the string?
     Id = atom_to_list(node()) ++ registered_name(),
     chord:create_key(Id).
 
