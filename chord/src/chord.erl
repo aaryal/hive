@@ -14,17 +14,6 @@
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([_Config]) ->
-    ShaInt = chord_server:create_id(),
-    SelfNode = #node{id = ShaInt, pid = self()},
-    StorageMod = storage_ets,              %TODO: make this a config variable
-    {ok, TRef} = timer:send_interval(timer:seconds(5), run_stabilization_tasks),
-    {ok, #server_state{
-            self = SelfNode,
-            predecessor = SelfNode,
-            storage = StorageMod,
-            fingers = create_empty_fingers(SelfNode,1,[]),
-            tref = TRef}}.
 
 
 %%--------------------------------------------------------------------
@@ -59,8 +48,8 @@ handle_call(get_successor, _From, State) ->
 handle_call(get_predecessor, _From, State) ->
     Reply = get_predecessor(State),
     {reply, Reply, State};
-handle_call({get, Key}, _From, #server_state{storage = StorageMod} = State) ->
-    Result = StorageMod:get(Key),
+handle_call({get, Key}, _From, #server_state{storage = StorageMod, storage_arg = Opaque} = State) ->
+    Result = StorageMod:get(Opaque, Key),
     {reply, Result, State}.
 
 handle_cast({set_predecessor, #node{} = Predecessor}, State) ->
@@ -69,9 +58,9 @@ handle_cast({set_predecessor, #node{} = Predecessor}, State) ->
 handle_cast({notify, Nprime}, State) ->
     State1 = notify(State, Nprime),
     {noreply, State1};
-handle_cast({put, Key, Value}, #server_state{storage = StorageMod} = State) ->
+handle_cast({put, Key, Value}, #server_state{storage = StorageMod, storage_arg = Opaque} = State) ->
     %?DEBUG("Saving ~p~n", [Key]),
-    StorageMod:put(Key, Value),
+    StorageMod:put(Opaque, Key, Value),
     %apply(StorageMod, put, [Key, Value]),
     {noreply, State};
 handle_cast({migrate_keys, MigrateTo}, State) ->
@@ -99,17 +88,17 @@ run_stabilization_tasks(State) ->
 migrate_all(#server_state{ self = #node{ pid = Pid}}, #node{pid = Pid}) ->
     %% migrating to self..
     ok;
-migrate_all(#server_state{storage = Storage}, MigrateTo) ->
+migrate_all(#server_state{storage = Storage, storage_arg = Opaque}, MigrateTo) ->
     F = fun(Key, Value) ->
                 chord_server:put(MigrateTo, Key, Value),
                 true
         end,
-    Storage:matching_delete(F).
+    Storage:matching_delete(Opaque, F).
 
 migrate_keys(#server_state{self = #node{pid = Pid}}, #node{pid = Pid}) ->
     %% migrating to self..
     ok;
-migrate_keys(#server_state{storage = Storage}, #node{id = Id} = MigrateTo) ->
+migrate_keys(#server_state{storage = Storage, storage_arg = Opaque}, #node{id = Id} = MigrateTo) ->
     F = fun(Key, Value) ->
                 KeyId = create_key(Key),
                 case KeyId =< Id of
@@ -120,7 +109,7 @@ migrate_keys(#server_state{storage = Storage}, #node{id = Id} = MigrateTo) ->
                         false
                 end
         end,
-    Storage:matching_delete(F).
+    Storage:matching_delete(Opaque, F).
 
 find_successor(#server_state{ self = #node{ pid = Pid}} = State, #node{pid = Pid}, Id) ->
     find_successor(State, Id);

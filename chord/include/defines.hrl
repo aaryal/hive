@@ -31,7 +31,8 @@
           successor_list = [],                  % [node{} | ...]
           monitors = [],                        % [pid() | pid() ...]
           tref,
-          storage
+          storage,
+          storage_arg
          }).
 
 -record(finger, {

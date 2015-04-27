@@ -11,11 +11,29 @@
 %%--------------------------------------------------------------------
 
 get(Key) ->
+    run_with_one_retry(fun get_unsafe/1, Key).
+
+put(Key, Value) ->
+    run_with_one_retry(fun put_unsafe/1, {Key, Value}).
+
+run_with_one_retry(F, Args) ->
+    try F(Args) of
+        Value ->
+            Value
+    catch
+        exit:{noproc, _Rest} ->
+            gen_server:call(?SERVER, run_stabilization_tasks),
+            F(Args)
+    end.
+
+
+get_unsafe(Key) ->
     Id = chord:create_key(Key),
     Successor = successor(Id),
     get(Successor, Key).
 
-put(Key, Value) ->
+
+put_unsafe({Key, Value}) ->
     Id = chord:create_key(Key),
     Successor = successor(Id),
     ok = put(Successor, Key, Value),
@@ -33,7 +51,17 @@ put(#node{pid = Pid}, Key, Value) ->
     ok.
 
 successor(Id) ->
-    gen_server:call(?SERVER, {find_successor, Id}).
+    try
+        gen_server:call(?SERVER, {find_successor, Id})
+    catch
+        exit:{timeout, _Rest} ->
+            gen_server:call(?SERVER, run_stabilization_tasks),
+            gen_server:call(?SERVER, {find_successor, Id});
+        exit:{noproc, _Rest} ->
+            gen_server:call(?SERVER, run_stabilization_tasks),
+            gen_server:call(?SERVER, {find_successor, Id})
+    end.
+
 
 
 %%====================================================================
@@ -89,7 +117,18 @@ start(Config) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([_Config]) ->
-    chord:init([_Config]).
+    ShaInt = create_id(),
+    SelfNode = #node{id = ShaInt, pid = self()},
+    StorageMod = storage_ets,              %TODO: make this a config variable
+    {ok, Opaque} = StorageMod:init(),
+    {ok, TRef} = timer:send_interval(timer:seconds(5), run_stabilization_tasks),
+    {ok, #server_state{
+            self = SelfNode,
+            predecessor = SelfNode,
+            storage = StorageMod,
+            storage_arg = Opaque,
+            fingers = chord:create_empty_fingers(SelfNode,1,[]),
+            tref = TRef}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -103,6 +142,9 @@ init([_Config]) ->
 handle_call({change_state, NewState}, _From, _State) ->
     NewState1 = setup_monitors(NewState),
     {reply, ok, NewState1};
+handle_call(run_stabilization_tasks, _From, State) ->
+    {noreply, State1} = handle_info(run_stabilization_tasks, State),
+    {reply, ok, State1};
 handle_call(Msg, From, State) ->
     %% TODO: spawn and call handle_call, meanwhile, reply with {noreply, State}
     F = fun() ->
@@ -132,7 +174,6 @@ handle_call(Msg, From, State) ->
 handle_cast(Msg, State) ->
     chord:handle_cast(Msg, State).
 
-
 code_change(_OldVsn, State, _Extra) ->
     io:format(user, "Code change..~n", []),
     {ok, State}.
@@ -147,7 +188,8 @@ handle_info({'DOWN', Ref, process, Pid, Reason}, State) ->
     error_logger:info_msg("Pid down...~p (~p)~n", [Pid, Reason]),
     demonitor(Ref),
     State1 = replace_dead_successor(State, Pid),
-    %self() ! run_stabilization_tasks,
+    %% Does this cause race conditions??
+    %%self() ! run_stabilization_tasks,
     {noreply, State1};
 handle_info(run_stabilization_tasks, State) ->
     try chord:run_stabilization_tasks(State) of

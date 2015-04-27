@@ -19,10 +19,8 @@ start_link() ->
 
 
 init([]) ->
-    Storage = {storage_ets, {storage_ets, start_link, []},
-               permanent, 2000, worker, [storage_ets]},
     Server = {chord, {chord_server, start_link, []}, % {ID, {module, function, args}, restart, shutdown, type, modules}
               permanent, 2000, worker, [chord_server, chord]},
-    Children = [Storage, Server],
+    Children = [Server],
     RestartStrategy = {one_for_one, 0, 1},
     {ok, {RestartStrategy, Children}}.
