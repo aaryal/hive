@@ -57,6 +57,10 @@ uses chord to store and retrieve values from the chord ring. Chord, in
 turn, uses ETS for storage. The code is designed to be able to swap it
 out for DETS or filesystem storage or what-have-you.
 
+See [chord](chord) to play with the chord ring.
+
+See [memcached](memcached) to play with the minimal memcached
+implementation.
 
 ##### Important
 
