@@ -60,6 +60,7 @@ And then, on yet another node do:
    data that was on the node that you shutdown on step #3.
 
 Conversly, to add a new node,
+
 1. On the node that you quit erlang on, rerun the `erl ..` command
 2. run
 
