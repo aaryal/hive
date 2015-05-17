@@ -1,0 +1,133 @@
+\documentclass{beamer}
+\usepackage{listings}
+\usepackage{multicol}
+
+\lstdefinestyle{all}{
+  basicstyle=\ttfamily\small,
+  showstringspaces=false,
+  %% frame=tlrb                   
+}
+
+\lstdefinestyle{pesudocode}{
+  style=all,
+  basicstyle=\fontsize{9}{11}\ttfamily
+}
+
+\lstdefinestyle{erlang}{
+  style=all,
+  basicstyle=\fontsize{9}{11}\ttfamily
+}
+
+\setlength{\columnseprule}{1pt}
+\def\columnseprulecolor{\color{black}}
+
+\mode<presentation>{ \usetheme{boxes} }
+\author{Anoop Aryal}
+
+\AtBeginSection[] {
+  \begin{frame}
+    \frametitle{Outline}
+    \tableofcontents[currentsection,currentsubsection]
+  \end{frame}
+}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+  \frametitle{DHT in Erlang}
+\end{frame}
+
+\section{Background}
+\begin{frame}
+  \frametitle{Motivation}
+  Recurring need for elastic sharding that can grow and shrink on-the-fly
+  \begin{itemize}
+  \item Maintainance
+  \item Scale
+  \item dynamic load balancing
+  \item Growing/shrinking without pre allocating
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Language and Algorithm}
+  Chord
+  \begin{itemize}
+  \item Consistent hashing - only K/n keys need to be remapped where K
+    is the number of keys and n is the number of slots
+  \item Ring of nodes that can come and go
+  \end{itemize}
+
+  Erlang
+  \begin{itemize}
+  \item Cheap threads
+  \item OTP + Supervisors + multiple version of code in the VM: helps
+    with high availability
+  \item Message passing with location transparency
+  \end{itemize}
+\end{frame}
+
+
+\section{Implementation}
+\begin{frame}[fragile]
+  \frametitle{The Chord Paper sample code}
+  \begin{itemize}
+  \item
+    \begin{lstlisting}[mathescape, style=pesudocode]
+$n$.join($n\prime$)
+   predecessor = nil;
+   successor = $n\prime$.find_successor($n$);
+    \end{lstlisting}
+    Object Oriented psuedocode. \emph{$n$} is the \emph{self}
+    node. \emph{$n\prime$} is the other (remote) node we're
+    joining. Note the location transparent call to
+    \emph{find\_successor}.
+
+  \item 
+    \begin{lstlisting}[mathescape, style=pesudocode]
+$n$.notify($n\prime$)
+   if(predecessor is nil or $n\prime$ $\in$ (predecessor, n))
+      predecessor = $n\prime$;
+    \end{lstlisting}
+    Use of mathematical notation $\in$ and (x,y), [x, y) for intervals
+      etc.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Goal} Keep the code as close to the paper as
+  possible. That means solve for:
+  \begin{itemize}
+  \item Object Oriented convention.
+  \item Location transparency
+  \item Set operators and intervals
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{OO be gone}
+  Luckly, this is only used for nodes.
+
+  \begin{multicols}{2}
+    \textbf{Paper}
+   \begin{lstlisting}[mathescape, style=pesudocode]
+$n$.notify($n\prime$)
+    \end{lstlisting}
+
+   \columnbreak
+
+   \textbf{Erlang}
+    \begin{lstlisting}[mathescape, style=erlang]
+notify($n$, $n\prime$) ->
+   ...
+    \end{lstlisting}
+  \end{multicols}
+
+  Effectively, we're borrowing from Python with it's \emph{self}.
+   
+\end{frame}
+
+\section{Future}
+
+\end{document}
