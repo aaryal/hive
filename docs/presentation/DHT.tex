@@ -15,7 +15,7 @@
 
 \lstdefinestyle{erlang}{
   style=all,
-  basicstyle=\fontsize{9}{11}\ttfamily
+  basicstyle=\fontsize{6.5}{7}\ttfamily
 }
 
 \setlength{\columnseprule}{1pt}
@@ -99,15 +99,51 @@ $n$.notify($n\prime$)
   \frametitle{Goal} Keep the code as close to the paper as
   possible. That means solve for:
   \begin{itemize}
-  \item Object Oriented convention.
-  \item Location transparency
   \item Set operators and intervals
+  \item Object Oriented convention
+  \item Location transparency
   \end{itemize}
 \end{frame}
 
 \begin{frame}[fragile]
+  \frametitle{Set Operators And Intervals}
+
+  \begin{multicols}{2}
+    \textbf{Paper}
+   \begin{lstlisting}[mathescape, style=pesudocode]
+$x \in (n, successor]$
+    \end{lstlisting}
+
+   \columnbreak
+
+   
+   \textbf{Erlang}
+   
+   Owing to the lack of infix operators, define a function like so:
+   \begin{lstlisting}[mathescape, style=erlang]
+between_oc(Num, {Low, High}) ->
+   ...
+   \end{lstlisting}
+   Then, call it like so:
+   \begin{lstlisting}[mathescape, style=erlang]
+between_oc($X$, {N, Successor}).
+   \end{lstlisting}
+   
+  \end{multicols}
+
+  Would be nice if we could define infix operators and have mismatched
+  parenthesis like $(x, y]$, $[x, y)$. But this is readable enough.
+
+   
+\end{frame}
+
+\begin{frame}[fragile]
   \frametitle{OO be gone}
-  Luckly, this is only used for nodes.
+
+  Luckly, OO notation is only used for nodes and is used to primarily
+  convey which node the function is running on. Essentially, taking
+  \emph{Smalltalks} concept of sending a message to an object, and
+  using that as sending a message to a node.
 
   \begin{multicols}{2}
     \textbf{Paper}
@@ -119,15 +155,136 @@ $n$.notify($n\prime$)
 
    \textbf{Erlang}
     \begin{lstlisting}[mathescape, style=erlang]
-notify($n$, $n\prime$) ->
+notify($N$, $N\prime$) ->
    ...
     \end{lstlisting}
   \end{multicols}
 
-  Effectively, we're borrowing from Python with it's \emph{self}.
+  Effectively, we're borrowing \emph{self} from Python.
    
 \end{frame}
 
-\section{Future}
+\begin{frame}[fragile]
+  \frametitle{Location Transparency}
+  Building on \emph{self} and Erlangs template matching...
 
+  \begin{multicols}{2}
+    \textbf{Paper}
+   \begin{lstlisting}[mathescape, style=pesudocode]
+$n$.find_successor(Id)
+    \end{lstlisting}
+   This is sometimes used inside a ``for'' loop iterating over a
+   ``finger table'' which, depending on how many nodes are present,
+   could mean that $n$ is local or a remote node. It's hard to
+   \emph{if/then/else} everywhere this occurs.
+
+   \columnbreak
+
+   \textbf{Erlang}
+    \begin{lstlisting}[mathescape, style=erlang]
+find_successor(SelfPid, SelfPid, Id) ->
+   localOp();      
+find_successor(_SelfPid, $N$Pid, Id) ->
+   gen_server:call($N$Pid,
+                   {find_successor, Id}).
+
+
+handle_call({find_successor, Id}, _From, State) ->
+   Reply = find_successor(self(), self(), Id),
+   {reply, Reply, State};
+...
+
+
+%% location independent call
+%% since we don't know if $N$ is local or remote
+%% template matching will sort it out
+find_successor(self(), $N$Pid, SomeId).  
+    \end{lstlisting}
+  \end{multicols}
+
+  Here, we're adding another argument to functions after the
+  \emph{self} argument to indicate where we want to actually run the
+  function. We then use \emph{gen\_server:call/2} to remote it if the
+  \emph{$N$Pid} doesn't match \emph{self}.
+   
+\end{frame}
+
+\begin{frame}
+  \frametitle{Further Adjustments}
+  \begin{itemize}
+  \item Because of in-order message handling of \emph{gen\_server},
+    needed to use \emph{gen\_server:reply/2} from a spawned thread.
+  \item Some gaps in the paper -- things that aren't defined. For
+    example, key transfer is, more or less, assumed to be atomic in the
+    paper. Doesn't specify what should happen if a \emph{get} is
+    issued to a key in transit. It's left to the implementation.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Memcached}
+
+  To get a feel for the performance characterstics of the distributed
+  hash table, I decided to implement a minimal \emph{Memcached} server
+  and used the DHT as the data store. The DHT, in turn, used
+  \emph{ETS} as the key value store. Implemented enough of the binary
+  version of \emph{Memcached} protocol to make \emph{memslap} happy.
+
+  \begin{itemize}
+    \item Implemented: get, put, set
+    \item Not Implemented: timed expiry. Rest is easy to implement,
+      even the deferred/pipelined requests with \emph{flush}.
+  \end{itemize}
+\end{frame}
+
+
+\section{Results}
+\begin{frame}
+  \frametitle{Slapped by \emph{memslap}}
+  \begin{itemize}
+  \item Erlang/DHT version is about 10x slower than
+    \emph{Memcached}. (Not bad for about a month of commuter train
+    hacking!)
+  \item Erlang/DHT version can take far more connections and requests
+    without erroring out than \emph{Memcached}!
+  \end{itemize}
+  (screencasts)
+\end{frame}
+
+
+\section{Future}
+\begin{frame}
+  \frametitle{Functional Programming + Math}
+
+  After this experience with getting fairly close to being able to
+  write distributed software by simply transcribing the paper,
+  encouraged to look at other mathametically (predicate logic) proven
+  algorithms and transcribing those. MDD - Mathametics Driven
+  Development? It's not a new concept: ``Formal Methods'', Leslie
+  Lamports TLA+.
+
+\end{frame}
+\begin{frame}
+  \frametitle{Distributed Toolkit}
+
+  Another direction is to start building distributed algorithm
+  toolkit. Interested in the following algorithms so far:
+
+  \begin{itemize}
+  \item Paxos or Raft
+  \item Amazon's Dynamo
+  \item Distributed graph algorithms
+  \item ...
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  Interesting in collaborating with fellow journeymen on learning
+  about the state of the art in distributed algorithms by implementing
+  them. No particular end goal in mind.
+
+  Github: https://github.com/aaryal/hive
+  
+  Thank you!
+\end{frame}
 \end{document}
